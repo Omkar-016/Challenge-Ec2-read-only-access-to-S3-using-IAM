@@ -1,1 +1,4 @@
 # Challenge-Ec2-read-only-access-to-S3-using-IAM
+
+visual_representation_of_challenge
+![image alt]()
