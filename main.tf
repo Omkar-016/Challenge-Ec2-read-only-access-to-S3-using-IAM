@@ -13,7 +13,6 @@ provider "aws" {
 }
 
 #VPC setup , so we get subnets
-
 resource "aws_vpc" "main" {
     cidr_block = "10.0.0.0/16"
     tags = {
@@ -21,23 +20,103 @@ resource "aws_vpc" "main" {
     }
 
 }
-
+# Private subnet
 resource "aws_subnet" "private" {
     vpc_id = aws_vpc.main.id
     cidr_block = "10.0.1.0/24"
     map_public_ip_on_launch = false
+    tags = {
+      name = "${var.Challenge}-private-sb"
+    }
+
 
 }
 
-#security group for internal connection
+#public subnet , for the NAT gw  
+resource "aws_subnet" "public" {
+    vpc_id = aws_vpc.main.id
+    cidr_block = "10.0.0.0/24"
+    map_public_ip_on_launch = true
+    tags = {
+      name = "${var.Challenge}-public-sb"
+    }
 
+}
+#internet gw
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+  tags = {
+    name = "${var.Challenge}-igw"
+  }
+  
+}
+
+#elastic ip for nat gw
+resource "aws_eip" "nat_eip" {
+  domain = "vpc"
+  tags ={
+    name = "${var.Challenge}-nat-eip"
+  }
+  
+}
+
+#nat gateway 
+resource "aws_nat_gateway" "nat" {
+  allocation_id = aws_eip.nat_eip.id
+  subnet_id     = aws_subnet.public.id
+  tags = {
+    name = "${var.Challenge}-nat-gateway"
+  }
+}
+ 
+# Public Route Table (for public subnet)
+resource "aws_route_table" "public_rt" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+
+  tags = {
+    name = "${var.Challenge}-public-rt"
+  }
+}
+
+# Associate public route table with public subnet
+resource "aws_route_table_association" "public_assoc" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public_rt.id
+}
+
+# Private Route table (for Private subnet , Via NAT gateway)
+resource "aws_route_table" "private_rt" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat.id
+  }
+
+  tags = {
+    name = "${var.Challenge}-private-rt"
+  }
+}
+
+# Associate private route table with private subnet
+resource "aws_route_table_association" "private_assoc" {
+  subnet_id      = aws_subnet.private.id
+  route_table_id = aws_route_table.private_rt.id
+}
+
+#security group for internal connection
 resource "aws_security_group" "ec_sg" {
   vpc_id = aws_vpc.main.id
 
   ingress {
     protocol  = "tcp"
-    from_port = "22"
-    to_port   = "22"
+    from_port = 22
+    to_port   = 22
     cidr_blocks = ["10.0.1.0/24"]
   }
 
@@ -47,6 +126,9 @@ resource "aws_security_group" "ec_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+  tags = {
+    name = "${var.Challenge}-sg"
+    }
 } 
 
 #IAM role for Ec2 to read S3
@@ -104,6 +186,9 @@ resource "aws_instance" "ec2" {
   vpc_security_group_ids = [aws_security_group.ec_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.Ec2_profile.name
   associate_public_ip_address = false
+  tags = {
+    name = "${var.Challenge}-ec2"
+  }
 }
 
 #creating a S3
@@ -111,7 +196,9 @@ resource "aws_s3_bucket" "Challenge_bucket" {
     bucket = "${var.Challenge}-challenge-bucket"
     force_destroy = false  # if S3 has a data in it terraform cant delete it and throw a error of "Error: BucketNotEmpty: The bucket you tried to delete is not empty"
                 #if true then  S3 has a data in it it will delete both the data and S3
-
+    tags = {
+     name = "${var.Challenge}-S3"
+  }
   
 }
 
