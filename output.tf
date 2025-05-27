@@ -5,3 +5,7 @@ output "ec2_instance_id" {
 output "s3_bucket_name" {
   value = aws_s3_bucket.Challenge_bucket.bucket
 }
+
+output "VPC_id" {
+  value = aws_vpc.main.id
+}
